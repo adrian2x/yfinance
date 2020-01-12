@@ -280,32 +280,39 @@ class TickerBase():
         data = utils.get_json(url, proxy)
 
         # holders
-        url = "{}/{}/holders".format(self._scrape_url, self.ticker)
-        holders = _pd.read_html(url)
-        self._major_holders = holders[0]
-        self._institutional_holders = holders[1]
-        if 'Date Reported' in self._institutional_holders:
-            self._institutional_holders['Date Reported'] = _pd.to_datetime(
-                self._institutional_holders['Date Reported'])
-        if '% Out' in self._institutional_holders:
-            self._institutional_holders['% Out'] = self._institutional_holders[
-                '% Out'].str.replace('%', '').astype(float)/100
+        try:
+            url = "{}/{}/holders".format(self._scrape_url, self.ticker)
+            holders = _pd.read_html(url)
+            self._major_holders = holders[0]
+            if len(holders) > 1:
+                self._institutional_holders = holders[1]
+                if 'Date Reported' in self._institutional_holders:
+                    self._institutional_holders['Date Reported'] = _pd.to_datetime(
+                        self._institutional_holders['Date Reported'])
+                if '% Out' in self._institutional_holders:
+                    self._institutional_holders['% Out'] = self._institutional_holders[
+                        '% Out'].str.replace('%', '').astype(float)/100
+        except Exception:
+            pass
 
         # sustainability
         d = {}
-        if isinstance(data.get('esgScores'), dict):
-            for item in data['esgScores']:
-                if not isinstance(data['esgScores'][item], (dict, list)):
-                    d[item] = data['esgScores'][item]
+        try:
+            if isinstance(data.get('esgScores'), dict):
+                for item in data['esgScores']:
+                    if not isinstance(data['esgScores'][item], (dict, list)):
+                        d[item] = data['esgScores'][item]
 
-            s = _pd.DataFrame(index=[0], data=d)[-1:].T
-            s.columns = ['Value']
-            s.index.name = '%.f-%.f' % (
-                s[s.index == 'ratingYear']['Value'].values[0],
-                s[s.index == 'ratingMonth']['Value'].values[0])
+                s = _pd.DataFrame(index=[0], data=d)[-1:].T
+                s.columns = ['Value']
+                s.index.name = '%.f-%.f' % (
+                    s[s.index == 'ratingYear']['Value'].values[0],
+                    s[s.index == 'ratingMonth']['Value'].values[0])
 
-            self._sustainability = s[~s.index.isin(
-                ['maxAge', 'ratingYear', 'ratingMonth'])]
+                self._sustainability = s[~s.index.isin(
+                    ['maxAge', 'ratingYear', 'ratingMonth'])]
+        except Exception:
+            pass
 
         # info (be nice to python 2)
         self._info = {}
@@ -315,12 +322,12 @@ class TickerBase():
             if isinstance(data.get(item), dict):
                 self._info.update(data[item])
 
-        self._info['regularMarketPrice'] = self._info['regularMarketOpen']
-        self._info['logo_url'] = ""
         try:
+            self._info['logo_url'] = ""
             domain = self._info['website'].split(
                 '://')[1].split('/')[0].replace('www.', '')
             self._info['logo_url'] = 'https://logo.clearbit.com/%s' % domain
+            self._info['regularMarketPrice'] = self._info['ask']
         except Exception:
             pass
 
