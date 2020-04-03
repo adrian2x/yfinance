@@ -250,7 +250,11 @@ class TickerBase():
 
     def _get_fundamentals(self, kind=None, proxy=None):
         def cleanup(data):
-            df = _pd.DataFrame(data).drop(columns=['maxAge'])
+            df = _pd.DataFrame(data)
+            try:
+                df = df.drop(columns=['maxAge'])
+            except Exception:
+                pass
             for col in df.columns:
                 df[col] = _np.where(
                     df[col].astype(str) == '-', _np.nan, df[col])
@@ -282,8 +286,8 @@ class TickerBase():
 
         # holders
         try:
-            url = "{}/{}/holders".format(self._scrape_url, self.ticker)
-            holders = _pd.read_html(url)
+            url = "{}/{}".format(self._scrape_url, self.ticker)
+            holders = _pd.read_html(url + '/holders')
             self._major_holders = holders[0]
             if len(holders) > 1:
                 self._institutional_holders = holders[1]
