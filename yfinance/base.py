@@ -251,15 +251,14 @@ class TickerBase():
     def _get_fundamentals(self, kind=None, proxy=None):
         def cleanup(data):
             df = _pd.DataFrame(data)
-            try:
+            if 'maxAge' in df:
                 df = df.drop(columns=['maxAge'])
-            except Exception:
-                pass
             for col in df.columns:
                 df[col] = _np.where(
                     df[col].astype(str) == '-', _np.nan, df[col])
+            if 'endDate' in df:
+                df.set_index('endDate', inplace=True)
 
-            df.set_index('endDate', inplace=True)
             try:
                 df.index = _pd.to_datetime(df.index, unit='s')
             except ValueError:
@@ -281,43 +280,39 @@ class TickerBase():
             return
 
         # get info and sustainability
-        url = '%s/%s' % (self._scrape_url, self.ticker)
+        url = '%s/%s?p=%s' % (self._scrape_url, self.ticker, self.ticker)
         data = utils.get_json(url, proxy)
 
         # holders
-        try:
-            url = "{}/{}".format(self._scrape_url, self.ticker)
-            holders = _pd.read_html(url + '/holders')
-            self._major_holders = holders[0]
-            if len(holders) > 1:
-                self._institutional_holders = holders[1]
-                if 'Date Reported' in self._institutional_holders:
-                    self._institutional_holders['Date Reported'] = _pd.to_datetime(
-                        self._institutional_holders['Date Reported'])
-                if '% Out' in self._institutional_holders:
-                    self._institutional_holders['% Out'] = self._institutional_holders[
-                        '% Out'].str.replace('%', '').astype(float)/100
-        except Exception:
-            pass
+        url = "{}/{}".format(self._scrape_url, self.ticker)
+        holders = _pd.read_html(url)
+        self._major_holders = holders[0]
+        if len(holders) > 1:
+            self._institutional_holders = holders[1]
+            if 'Date Reported' in self._institutional_holders:
+                self._institutional_holders['Date Reported'] = _pd.to_datetime(
+                    self._institutional_holders['Date Reported'])
+            if '% Out' in self._institutional_holders:
+                self._institutional_holders['% Out'] = self._institutional_holders[
+                    '% Out'].str.replace('%', '').astype(float)/100
 
         # sustainability
         d = {}
-        try:
-            if isinstance(data.get('esgScores'), dict):
-                for item in data['esgScores']:
-                    if not isinstance(data['esgScores'][item], (dict, list)):
-                        d[item] = data['esgScores'][item]
+        if isinstance(data.get('esgScores'), dict):
+            for item in data['esgScores']:
+                if not isinstance(data['esgScores'][item], (dict, list)):
+                    d[item] = data['esgScores'][item]
 
-                s = _pd.DataFrame(index=[0], data=d)[-1:].T
-                s.columns = ['Value']
-                s.index.name = '%.f-%.f' % (
-                    s[s.index == 'ratingYear']['Value'].values[0],
-                    s[s.index == 'ratingMonth']['Value'].values[0])
+            s = _pd.DataFrame(index=[0], data=d)[-1:].T
+            s.columns = ['Value']
+            if(len(s[s.index == 'ratingYear']['Value'].values) > 0
+                and len(s[s.index == 'ratingMonth']['Value'].values) > 0 ):
+                s.index.name = '%.f-%.f' % (s[s.index == 'ratingYear']['Value'].values[0], s[s.index == 'ratingMonth']['Value'].values[0])
+            else:
+                s.index.name = '%.f-%.f' % (0, 0)
 
-                self._sustainability = s[~s.index.isin(
-                    ['maxAge', 'ratingYear', 'ratingMonth'])]
-        except Exception:
-            pass
+            self._sustainability = s[~s.index.isin(
+                ['maxAge', 'ratingYear', 'ratingMonth'])]
 
         # info (be nice to python 2)
         self._info = {}
@@ -327,12 +322,16 @@ class TickerBase():
             if isinstance(data.get(item), dict):
                 self._info.update(data[item])
 
+        if 'regularMarketPrice' in self._info:
+            self._info['regularMarketPrice'] = self._info['regularMarketOpen']
+        else:
+            self._info['regularMarketPrice'] = ""
+
+        self._info['logo_url'] = ""
         try:
-            self._info['logo_url'] = ""
             domain = self._info['website'].split(
                 '://')[1].split('/')[0].replace('www.', '')
             self._info['logo_url'] = 'https://logo.clearbit.com/%s' % domain
-            self._info['regularMarketPrice'] = self._info['ask']
         except Exception:
             pass
 
@@ -363,35 +362,41 @@ class TickerBase():
             pass
 
         # get fundamentals
-        data = utils.get_json(url+'/financials', proxy)
+        data = utils.get_json(url+'/financials?p='+self.ticker, proxy)
 
         # generic patterns
-        for key in (
-            (self._cashflow, 'cashflowStatement', 'cashflowStatements'),
-            (self._balancesheet, 'balanceSheet', 'balanceSheetStatements'),
-            (self._financials, 'incomeStatement', 'incomeStatementHistory')
-        ):
+        try:
+            for key in (
+                (self._financials, 'incomeStatement', 'incomeStatementHistory'),
+                (self._balancesheet, 'balanceSheet', 'balanceSheetStatements'),
+                (self._cashflow, 'cashflowStatement', 'cashflowStatements'),
+            ):
 
-            item = key[1] + 'History'
-            if isinstance(data.get(item), dict):
-                key[0]['yearly'] = cleanup(data[item][key[2]])
+                item = key[1] + 'History'
+                if isinstance(data.get(item), dict):
+                    key[0]['yearly'] = cleanup(data[item][key[2]])
 
-            item = key[1]+'HistoryQuarterly'
-            if isinstance(data.get(item), dict):
-                key[0]['quarterly'] = cleanup(data[item][key[2]])
+                item = key[1]+'HistoryQuarterly'
+                if isinstance(data.get(item), dict):
+                    key[0]['quarterly'] = cleanup(data[item][key[2]])
+        except Exception:
+            pass
 
         # earnings
-        if isinstance(data.get('earnings'), dict):
-            earnings = data['earnings']['financialsChart']
-            df = _pd.DataFrame(earnings['yearly']).set_index('date')
-            df.columns = utils.camel2title(df.columns)
-            df.index.name = 'Year'
-            self._earnings['yearly'] = df
+        try:
+            if isinstance(data.get('earnings'), dict):
+                earnings = data['earnings']['financialsChart']
+                df = _pd.DataFrame(earnings['yearly']).set_index('date')
+                df.columns = utils.camel2title(df.columns)
+                df.index.name = 'Year'
+                self._earnings['yearly'] = df
 
-            df = _pd.DataFrame(earnings['quarterly']).set_index('date')
-            df.columns = utils.camel2title(df.columns)
-            df.index.name = 'Quarter'
-            self._earnings['quarterly'] = df
+                df = _pd.DataFrame(earnings['quarterly']).set_index('date')
+                df.columns = utils.camel2title(df.columns)
+                df.index.name = 'Quarter'
+                self._earnings['quarterly'] = df
+        except Exception:
+            pass
 
         self._fundamentals = True
 
@@ -516,7 +521,7 @@ class TickerBase():
         search_str = '"{}|'.format(ticker)
         if search_str not in data:
             if q.lower() in data.lower():
-                search_str = '"|'
+                search_str = '"|'.format(ticker)
                 if search_str not in data:
                     self._isin = '-'
                     return self._isin
