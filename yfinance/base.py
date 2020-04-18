@@ -114,7 +114,8 @@ class TickerBase():
         if start or period is None or period.lower() == "max":
             if start is None:
                 # Yahoo only returns 100 years of data
-                start = int(_datetime.time() - _datetime.timedelta(days=36524))
+                start = _datetime.datetime.now() - _datetime.timedelta(days=36500)
+                start = int(_time.mktime(start.timetuple()))
             elif isinstance(start, _datetime.datetime):
                 start = int(_time.mktime(start.timetuple()))
             else:
