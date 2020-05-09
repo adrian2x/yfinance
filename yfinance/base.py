@@ -363,6 +363,7 @@ class TickerBase():
             pass
 
         # get fundamentals
+        self._earnings_currency = self._info.get("currency")
         data = utils.get_json(url+'/financials?p='+self.ticker, proxy)
 
         # generic patterns
@@ -386,6 +387,7 @@ class TickerBase():
         # earnings
         try:
             if isinstance(data.get('earnings'), dict):
+                self._earnings_currency = data['earnings'].get("financialCurrency", 'USD')
                 earnings = data['earnings']['financialsChart']
                 df = _pd.DataFrame(earnings['yearly']).set_index('date')
                 df.columns = utils.camel2title(df.columns)
