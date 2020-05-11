@@ -283,6 +283,7 @@ class TickerBase():
         # get info and sustainability
         url = '%s/%s?p=%s' % (self._scrape_url, self.ticker, self.ticker)
         data = utils.get_json(url, proxy)
+        self._price = data.get("price")
 
         # holders
         url = "{}/{}".format(self._scrape_url, self.ticker)
