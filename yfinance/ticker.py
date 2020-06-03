@@ -30,6 +30,7 @@ import pandas as _pd
 # import json as _json
 # import re as _re
 from collections import namedtuple as _namedtuple
+from ratelimit import limits, sleep_and_retry
 
 from .base import TickerBase
 
@@ -39,6 +40,8 @@ class Ticker(TickerBase):
     def __repr__(self):
         return 'yfinance.Ticker object <%s>' % self.ticker
 
+    @sleep_and_retry
+    @limits(calls=1, period=2)
     def _download_options(self, date=None, proxy=None):
         if date is None:
             url = "{}/v7/finance/options/{}".format(
@@ -58,7 +61,9 @@ class Ticker(TickerBase):
             for exp in r['optionChain']['result'][0]['expirationDates']:
                 self._expirations[_datetime.datetime.fromtimestamp(
                     exp).strftime('%Y-%m-%d')] = exp
-            return r['optionChain']['result'][0]['options'][0]
+            data = r['optionChain']['result'][0]['options']
+            if len(data):
+                return data[0]
         return {}
 
     def _options2df(self, opt, tz=None):
