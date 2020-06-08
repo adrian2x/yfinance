@@ -30,18 +30,16 @@ import pandas as _pd
 # import json as _json
 # import re as _re
 from collections import namedtuple as _namedtuple
-from ratelimit import limits, sleep_and_retry
 
 from .base import TickerBase
 
+REQUESTS_TIMEOUT = 10
 
 class Ticker(TickerBase):
 
     def __repr__(self):
         return 'yfinance.Ticker object <%s>' % self.ticker
 
-    @sleep_and_retry
-    @limits(calls=1, period=2)
     def _download_options(self, date=None, proxy=None):
         if date is None:
             url = "{}/v7/finance/options/{}".format(
@@ -56,7 +54,7 @@ class Ticker(TickerBase):
                 proxy = proxy["https"]
             proxy = {"https": proxy}
 
-        r = _requests.get(url=url, proxies=proxy).json()
+        r = _requests.get(url=url, proxies=proxy, timeout=REQUESTS_TIMEOUT).json()
         if r['optionChain']['result']:
             for exp in r['optionChain']['result'][0]['expirationDates']:
                 self._expirations[_datetime.datetime.fromtimestamp(
