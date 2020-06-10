@@ -21,12 +21,12 @@
 
 from __future__ import print_function
 
-import requests as _requests
-import re as _re
-import pandas as _pd
-import numpy as _np
-import sys as _sys
-import re as _re
+from ._requests import _get
+import re
+import pandas as pd
+import numpy as np
+import sys
+import re
 
 try:
     import ujson as _json
@@ -36,18 +36,18 @@ except ImportError:
 REQUESTS_TIMEOUT = 10
 
 def empty_df(index=[]):
-    empty = _pd.DataFrame(index=index, data={
-        'Open': _np.nan, 'High': _np.nan, 'Low': _np.nan,
-        'Close': _np.nan, 'Adj Close': _np.nan, 'Volume': _np.nan})
+    empty = pd.DataFrame(index=index, data={
+        'Open': np.nan, 'High': np.nan, 'Low': np.nan,
+        'Close': np.nan, 'Adj Close': np.nan, 'Volume': np.nan})
     empty.index.name = 'Date'
     return empty
 
 
 def get_json(url, proxy=None):
-    html = _requests.get(url=url, proxies=proxy, timeout=REQUESTS_TIMEOUT).text
+    html = _get(url, proxies=proxy).text
 
     if "QuoteSummaryStore" not in html:
-        html = _requests.get(url=url, proxies=proxy, timeout=REQUESTS_TIMEOUT).text
+        html = _get(url, proxies=proxy).text
         if "QuoteSummaryStore" not in html:
             return {}
 
@@ -58,14 +58,14 @@ def get_json(url, proxy=None):
 
     # return data
     new_data = _json.dumps(data).replace('{}', 'null')
-    new_data = _re.sub(
+    new_data = re.sub(
         r'\{[\'|\"]raw[\'|\"]:(.*?),(.*?)\}', r'\1', new_data)
 
     return _json.loads(new_data)
 
 
 def camel2title(o):
-    return [_re.sub("([a-z])([A-Z])", "\g<1> \g<2>", i).title() for i in o]
+    return [re.sub("([a-z])([A-Z])", "\g<1> \g<2>", i).title() for i in o]
 
 
 def auto_adjust(data):
@@ -122,14 +122,14 @@ def parse_quotes(data, tz=None):
     if "adjclose" in data["indicators"]:
         adjclose = data["indicators"]["adjclose"][0]["adjclose"]
 
-    quotes = _pd.DataFrame({"Open": opens,
+    quotes = pd.DataFrame({"Open": opens,
                             "High": highs,
                             "Low": lows,
                             "Close": closes,
                             "Adj Close": adjclose,
                             "Volume": volumes})
 
-    quotes.index = _pd.to_datetime(timestamps, unit="s")
+    quotes.index = pd.to_datetime(timestamps, unit="s")
     quotes.sort_index(inplace=True)
 
     if tz is not None:
@@ -139,15 +139,15 @@ def parse_quotes(data, tz=None):
 
 
 def parse_actions(data, tz=None):
-    dividends = _pd.DataFrame(columns=["Dividends"])
-    splits = _pd.DataFrame(columns=["Stock Splits"])
+    dividends = pd.DataFrame(columns=["Dividends"])
+    splits = pd.DataFrame(columns=["Stock Splits"])
 
     if "events" in data:
         if "dividends" in data["events"]:
-            dividends = _pd.DataFrame(
+            dividends = pd.DataFrame(
                 data=list(data["events"]["dividends"].values()))
             dividends.set_index("date", inplace=True)
-            dividends.index = _pd.to_datetime(dividends.index, unit="s")
+            dividends.index = pd.to_datetime(dividends.index, unit="s")
             dividends.sort_index(inplace=True)
             if tz is not None:
                 dividends.index = dividends.index.tz_localize(tz)
@@ -155,10 +155,10 @@ def parse_actions(data, tz=None):
             dividends.columns = ["Dividends"]
 
         if "splits" in data["events"]:
-            splits = _pd.DataFrame(
+            splits = pd.DataFrame(
                 data=list(data["events"]["splits"].values()))
             splits.set_index("date", inplace=True)
-            splits.index = _pd.to_datetime(splits.index, unit="s")
+            splits.index = pd.to_datetime(splits.index, unit="s")
             splits.sort_index(inplace=True)
             if tz is not None:
                 splits.index = splits.index.tz_localize(tz)
@@ -184,7 +184,7 @@ class ProgressBar:
             self.elapsed = self.iterations
         self.update_iteration(1)
         print('\r' + str(self), end='')
-        _sys.stdout.flush()
+        sys.stdout.flush()
         print()
 
     def animate(self, iteration=None):
@@ -195,7 +195,7 @@ class ProgressBar:
             self.elapsed += iteration
 
         print('\r' + str(self), end='')
-        _sys.stdout.flush()
+        sys.stdout.flush()
         self.update_iteration()
 
     def update_iteration(self, val=None):

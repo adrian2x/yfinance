@@ -21,19 +21,13 @@
 
 from __future__ import print_function
 
-# import time as _time
-import datetime as _datetime
-import requests as _requests
-import pandas as _pd
-# import numpy as _np
-
-# import json as _json
-# import re as _re
-from collections import namedtuple as _namedtuple
+import datetime
+import pandas as pd
+from collections import namedtuple
 
 from .base import TickerBase
+from ._requests import _get
 
-REQUESTS_TIMEOUT = 10
 
 class Ticker(TickerBase):
 
@@ -54,18 +48,17 @@ class Ticker(TickerBase):
                 proxy = proxy["https"]
             proxy = {"https": proxy}
 
-        r = _requests.get(url=url, proxies=proxy, timeout=REQUESTS_TIMEOUT).json()
+        r = _get(url=url, proxies=proxy).json()
         if r['optionChain']['result']:
             for exp in r['optionChain']['result'][0]['expirationDates']:
-                self._expirations[_datetime.datetime.fromtimestamp(
-                    exp).strftime('%Y-%m-%d')] = exp
+                self._expirations[datetime.datetime.utcfromtimestamp(exp).strftime('%Y-%m-%d')] = exp
             data = r['optionChain']['result'][0]['options']
             if len(data):
                 return data[0]
         return {}
 
     def _options2df(self, opt, tz=None):
-        data = _pd.DataFrame(opt).reindex(columns=[
+        data = pd.DataFrame(opt).reindex(columns=[
             'contractSymbol',
             'lastTradeDate',
             'strike',
@@ -80,11 +73,6 @@ class Ticker(TickerBase):
             'inTheMoney',
             'contractSize',
             'currency'])
-
-        data['lastTradeDate'] = _pd.to_datetime(
-            data['lastTradeDate'], unit='s')
-        if tz is not None:
-            data['lastTradeDate'] = data['lastTradeDate'].tz_localize(tz)
         return data
 
     def option_chain(self, date=None, proxy=None, tz=None):
@@ -101,7 +89,7 @@ class Ticker(TickerBase):
             date = self._expirations[date]
             options = self._download_options(date, proxy=proxy)
 
-        return _namedtuple('Options', ['calls', 'puts'])(**{
+        return namedtuple('Options', ['calls', 'puts'])(**{
             "calls": self._options2df(options['calls'], tz=tz),
             "puts": self._options2df(options['puts'], tz=tz)
         })
