@@ -21,8 +21,8 @@
 
 from __future__ import print_function
 
-import time as _time
-import datetime as _datetime
+import time
+import datetime
 import requests as _requests
 import pandas as _pd
 import numpy as _np
@@ -87,10 +87,10 @@ class TickerBase():
                 Valid intervals: 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo
                 Intraday data cannot extend last 60 days
             start: str
-                Download start date string (YYYY-MM-DD) or _datetime.
+                Download start date string (YYYY-MM-DD) or datetime.
                 Default is 1900-01-01
             end: str
-                Download end date string (YYYY-MM-DD) or _datetime.
+                Download end date string (YYYY-MM-DD) or datetime.
                 Default is now
             prepost : bool
                 Include Pre and Post market data in results?
@@ -116,19 +116,19 @@ class TickerBase():
         if start or period is None or period.lower() == "max":
             if start is None:
                 # Yahoo only returns 100 years of data
-                start = _datetime.datetime.now() - _datetime.timedelta(days=36500)
-                start = int(_time.mktime(start.timetuple()))
-            elif isinstance(start, _datetime.datetime):
-                start = int(_time.mktime(start.timetuple()))
+                start = datetime.datetime.now() - datetime.timedelta(days=36500)
+                start = int(time.mktime(start.timetuple()))
+            elif isinstance(start, datetime.datetime):
+                start = int(time.mktime(start.timetuple()))
             else:
-                start = int(_time.mktime(
-                    _time.strptime(str(start), '%Y-%m-%d')))
+                start = int(time.mktime(
+                    time.strptime(str(start), '%Y-%m-%d')))
             if end is None:
-                end = int(_time.time())
-            elif isinstance(end, _datetime.datetime):
-                end = int(_time.mktime(end.timetuple()))
+                end = int(time.time())
+            elif isinstance(end, datetime.datetime):
+                end = int(time.mktime(end.timetuple()))
             else:
-                end = int(_time.mktime(_time.strptime(str(end), '%Y-%m-%d')))
+                end = int(time.mktime(time.strptime(str(end), '%Y-%m-%d')))
 
             params = {"period1": start, "period2": end}
         else:
@@ -251,7 +251,7 @@ class TickerBase():
 
     # ------------------------
 
-    def _get_fundamentals(self, kind=None, proxy=None):
+    def _get_fundamentals(self, shallow=False, proxy=None, throttle=1):
         def cleanup(data):
             df = _pd.DataFrame(data)
             if 'maxAge' in df:
@@ -284,52 +284,19 @@ class TickerBase():
 
         # get info and sustainability
         url = '%s/%s?p=%s' % (self._scrape_url, self.ticker, self.ticker)
+        time.sleep(throttle) # some throttling before calling
         data = utils.get_json(url, proxy)
         self._price = data.get("price")
-
-        # holders
-        url = "{}/{}".format(self._scrape_url, self.ticker)
-        holders = _pd.read_html(url)
-        self._major_holders = holders[0]
-        if len(holders) > 1:
-            self._institutional_holders = holders[1]
-            if 'Date Reported' in self._institutional_holders:
-                self._institutional_holders['Date Reported'] = _pd.to_datetime(
-                    self._institutional_holders['Date Reported'])
-            if '% Out' in self._institutional_holders:
-                self._institutional_holders['% Out'] = self._institutional_holders[
-                    '% Out'].str.replace('%', '').astype(float)/100
-
-        # sustainability
-        d = {}
-        if isinstance(data.get('esgScores'), dict):
-            for item in data['esgScores']:
-                if not isinstance(data['esgScores'][item], (dict, list)):
-                    d[item] = data['esgScores'][item]
-
-            s = _pd.DataFrame(index=[0], data=d)[-1:].T
-            s.columns = ['Value']
-            if(len(s[s.index == 'ratingYear']['Value'].values) > 0
-                and len(s[s.index == 'ratingMonth']['Value'].values) > 0 ):
-                s.index.name = '%.f-%.f' % (s[s.index == 'ratingYear']['Value'].values[0], s[s.index == 'ratingMonth']['Value'].values[0])
-            else:
-                s.index.name = '%.f-%.f' % (0, 0)
-
-            self._sustainability = s[~s.index.isin(
-                ['maxAge', 'ratingYear', 'ratingMonth'])]
 
         # info (be nice to python 2)
         self._info = {}
         items = ['summaryProfile', 'summaryDetail', 'quoteType',
-                 'defaultKeyStatistics', 'assetProfile', 'summaryDetail']
+                 'defaultKeyStatistics', 'financialData', 'assetProfile', 'summaryDetail', 'price']
         for item in items:
             if isinstance(data.get(item), dict):
                 self._info.update(data[item])
 
-        if 'regularMarketPrice' in self._info:
-            self._info['regularMarketPrice'] = self._info['regularMarketOpen']
-        else:
-            self._info['regularMarketPrice'] = ""
+        if shallow: return self._info
 
         self._info['logo_url'] = ""
         try:
@@ -352,21 +319,53 @@ class TickerBase():
             pass
 
         # analyst recommendations
-        try:
-            rec = _pd.DataFrame(
-                data['upgradeDowngradeHistory']['history'])
-            rec['earningsDate'] = _pd.to_datetime(
-                rec['epochGradeDate'], unit='s')
-            rec.set_index('earningsDate', inplace=True)
-            rec.index.name = 'Date'
-            rec.columns = utils.camel2title(rec.columns)
-            self._recommendations = rec[[
-                'Firm', 'To Grade', 'From Grade', 'Action']].sort_index()
-        except Exception:
-            pass
+        # try:
+        #     rec = _pd.DataFrame(
+        #         data['upgradeDowngradeHistory']['history'])
+        #     rec['earningsDate'] = _pd.to_datetime(
+        #         rec['epochGradeDate'], unit='s')
+        #     rec.set_index('earningsDate', inplace=True)
+        #     rec.index.name = 'Date'
+        #     rec.columns = utils.camel2title(rec.columns)
+        #     self._recommendations = rec[[
+        #         'Firm', 'To Grade', 'From Grade', 'Action']].sort_index()
+        # except Exception:
+        #     pass
+
+        # holders
+        # url = "{}/{}".format(self._scrape_url, self.ticker)
+        # holders = _pd.read_html(url)
+        # self._major_holders = holders[0]
+        # if len(holders) > 1:
+        #     self._institutional_holders = holders[1]
+        #     if 'Date Reported' in self._institutional_holders:
+        #         self._institutional_holders['Date Reported'] = _pd.to_datetime(
+        #             self._institutional_holders['Date Reported'])
+        #     if '% Out' in self._institutional_holders:
+        #         self._institutional_holders['% Out'] = self._institutional_holders[
+        #             '% Out'].str.replace('%', '').astype(float)/100
+
+        # sustainability
+        # d = {}
+        # if isinstance(data.get('esgScores'), dict):
+        #     for item in data['esgScores']:
+        #         if not isinstance(data['esgScores'][item], (dict, list)):
+        #             d[item] = data['esgScores'][item]
+
+        #     s = _pd.DataFrame(index=[0], data=d)[-1:].T
+        #     s.columns = ['Value']
+        #     if(len(s[s.index == 'ratingYear']['Value'].values) > 0
+        #         and len(s[s.index == 'ratingMonth']['Value'].values) > 0 ):
+        #         s.index.name = '%.f-%.f' % (s[s.index == 'ratingYear']['Value'].values[0], s[s.index == 'ratingMonth']['Value'].values[0])
+        #     else:
+        #         s.index.name = '%.f-%.f' % (0, 0)
+
+        #     self._sustainability = s[~s.index.isin(
+        #         ['maxAge', 'ratingYear', 'ratingMonth'])]
 
         # get fundamentals
         self._earnings_currency = self._info.get("currency")
+        time.sleep(throttle) # some throttling before calling
         data = utils.get_json(url+'/financials?p='+self.ticker, proxy)
 
         # generic patterns
