@@ -51,7 +51,7 @@ class Ticker(TickerBase):
         r = _get(url=url, proxies=proxy).json()
         if r['optionChain']['result']:
             for exp in r['optionChain']['result'][0]['expirationDates']:
-                self._expirations[datetime.datetime.utcfromtimestamp(exp).strftime('%Y-%m-%d')] = exp
+                self._expirations[datetime.datetime.utcfromtimestamp(exp)] = exp
             data = r['optionChain']['result'][0]['options']
             if len(data):
                 return data[0]
