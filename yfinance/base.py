@@ -23,7 +23,7 @@ from __future__ import print_function
 
 import time
 import datetime
-import requests as _requests
+from ._requests import _get
 import pandas as _pd
 import numpy as _np
 
@@ -151,7 +151,7 @@ class TickerBase():
 
         # Getting data from json
         url = "{}/v8/finance/chart/{}".format(self._base_url, self.ticker)
-        data = _requests.get(url=url, params=params, proxies=proxy, timeout=REQUESTS_TIMEOUT)
+        data = _get(url=url, params=params, proxies=proxy, timeout=REQUESTS_TIMEOUT)
         if "Will be right back" in data.text:
             raise RuntimeError("*** YAHOO! FINANCE IS CURRENTLY DOWN! ***\n"
                                "Our engineers are working quickly to resolve "
@@ -231,16 +231,7 @@ class TickerBase():
         df["Stock Splits"].fillna(0, inplace=True)
 
         # index eod/intraday
-        df.index = df.index.tz_localize("UTC").tz_convert(
-            data["chart"]["result"][0]["meta"]["exchangeTimezoneName"])
-
-        if params["interval"][-1] == "m":
-            df.index.name = "Datetime"
-        else:
-            df.index = _pd.to_datetime(df.index.date)
-            if tz is not None:
-                df.index = df.index.tz_localize(tz)
-            df.index.name = "Date"
+        df.index.name = "Date"
 
         self._history = df.copy()
 
@@ -286,12 +277,12 @@ class TickerBase():
         url = '%s/%s?p=%s' % (self._scrape_url, self.ticker, self.ticker)
         time.sleep(throttle) # some throttling before calling
         data = utils.get_json(url, proxy)
+        self._quote = dict(data)
         self._price = data.get("price")
 
         # info (be nice to python 2)
         self._info = {}
-        items = ['summaryProfile', 'summaryDetail', 'quoteType',
-                 'defaultKeyStatistics', 'financialData', 'assetProfile', 'summaryDetail', 'price']
+        items = ['summaryProfile', 'assetProfile', 'summaryDetail', 'quoteType', 'price',]
         for item in items:
             if isinstance(data.get(item), dict):
                 self._info.update(data[item])
@@ -333,7 +324,7 @@ class TickerBase():
         #     pass
 
         # holders
-        # url = "{}/{}".format(self._scrape_url, self.ticker)
+        url = "{}/{}".format(self._scrape_url, self.ticker)
         # holders = _pd.read_html(url)
         # self._major_holders = holders[0]
         # if len(holders) > 1:
@@ -364,7 +355,7 @@ class TickerBase():
         #         ['maxAge', 'ratingYear', 'ratingMonth'])]
 
         # get fundamentals
-        self._earnings_currency = self._info.get("currency")
+        self.financial_currency = (self._quote.get("financialData") or {}).get("financialCurrency")
         time.sleep(throttle) # some throttling before calling
         data = utils.get_json(url+'/financials?p='+self.ticker, proxy)
 
@@ -389,7 +380,6 @@ class TickerBase():
         # earnings
         try:
             if isinstance(data.get('earnings'), dict):
-                self._earnings_currency = data['earnings'].get("financialCurrency", 'USD')
                 earnings = data['earnings']['financialsChart']
                 df = _pd.DataFrame(earnings['yearly']).set_index('date')
                 df.columns = utils.camel2title(df.columns)
@@ -521,7 +511,7 @@ class TickerBase():
         url = 'https://markets.businessinsider.com/ajax/' \
               'SearchController_Suggest?max_results=25&query=%s' \
             % urlencode(q)
-        data = _requests.get(url=url, proxies=proxy, timeout=REQUESTS_TIMEOUT).text
+        data = _get(url=url, proxies=proxy, timeout=REQUESTS_TIMEOUT).text
 
         search_str = '"{}|'.format(ticker)
         if search_str not in data:
