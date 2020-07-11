@@ -242,7 +242,7 @@ class TickerBase():
 
     # ------------------------
 
-    def _get_fundamentals(self, shallow=False, proxy=None, throttle=1):
+    def _get_fundamentals(self, proxy=None, throttle=1):
         def cleanup(data):
             df = _pd.DataFrame(data)
             if 'maxAge' in df:
@@ -279,6 +279,9 @@ class TickerBase():
         data = utils.get_json(url, proxy)
         self._quote = dict(data)
         self._price = data.get("price")
+        self._financialData = self._quote.get("financialData") or {}
+        self._financialCurrency = self._financialData.get("financialCurrency")
+        self._defaultKeyStatistics = self._quote.get("defaultKeyStatistics") or {}
 
         # info (be nice to python 2)
         self._info = {}
@@ -287,9 +290,6 @@ class TickerBase():
             if isinstance(data.get(item), dict):
                 self._info.update(data[item])
 
-        if shallow: return self._info
-
-        self._info['logo_url'] = ""
         try:
             domain = self._info['website'].split(
                 '://')[1].split('/')[0].replace('www.', '')
@@ -355,7 +355,6 @@ class TickerBase():
         #         ['maxAge', 'ratingYear', 'ratingMonth'])]
 
         # get fundamentals
-        self.financial_currency = (self._quote.get("financialData") or {}).get("financialCurrency")
         time.sleep(throttle) # some throttling before calling
         data = utils.get_json(url+'/financials?p='+self.ticker, proxy)
 
