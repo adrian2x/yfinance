@@ -27,11 +27,9 @@ import pandas as pd
 import numpy as np
 import sys
 import re
+from decimal import Decimal
 
-try:
-    import ujson as _json
-except ImportError:
-    import json as _json
+import json as _json
 
 REQUESTS_TIMEOUT = 10
 
@@ -66,6 +64,15 @@ def get_json(url, proxy=None):
 
 def camel2title(o):
     return [re.sub("([a-z])([A-Z])", "\g<1> \g<2>", i).title() for i in o]
+
+
+def as_decimal(arr):
+    def cast_dec(s):
+        try:
+            return Decimal(s)
+        except Exception:
+            return np.nan
+    return np.array([cast_dec(item) for item in arr])
 
 
 def auto_adjust(data):
@@ -113,14 +120,14 @@ def parse_quotes(data, tz=None):
     timestamps = data["timestamp"]
     ohlc = data["indicators"]["quote"][0]
     volumes = ohlc["volume"]
-    opens = ohlc["open"]
-    closes = ohlc["close"]
-    lows = ohlc["low"]
-    highs = ohlc["high"]
+    opens = as_decimal(ohlc["open"])
+    closes = as_decimal(ohlc["close"])
+    lows = as_decimal(ohlc["low"])
+    highs = as_decimal(ohlc["high"])
 
     adjclose = closes
     if "adjclose" in data["indicators"]:
-        adjclose = data["indicators"]["adjclose"][0]["adjclose"]
+        adjclose = as_decimal(data["indicators"]["adjclose"][0]["adjclose"])
 
     quotes = pd.DataFrame({"Open": opens,
                             "High": highs,
@@ -162,8 +169,7 @@ def parse_actions(data, tz=None):
             splits.sort_index(inplace=True)
             if tz is not None:
                 splits.index = splits.index.tz_localize(tz)
-            splits["Stock Splits"] = splits["numerator"] / \
-                splits["denominator"]
+            splits["Stock Splits"] = as_decimal(splits["numerator"]) / as_decimal(splits["denominator"])
             splits = splits["Stock Splits"]
 
     return dividends, splits
